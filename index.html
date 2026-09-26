@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic-Tac-Toe Full Tree (ES000001934 Dohyeon Jeong)</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background: #252526;
+            padding: 15px 20px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        h1 {
+            font-size: 18px;
+            margin: 0;
+            color: #ffffff;
+        }
+        button {
+            background-color: #0e639c;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            font-size: 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+            transition: background-color 0.2s;
+        }
+        button:hover { background-color: #1177bb; }
+        
+#viewport {
+            flex-grow: 1;
+            position: relative;
+            background: #181818;
+            cursor: grab;
+            overflow: hidden;
+        }
+        #viewport::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: url('Logo-UMN-e1634700898276.png');
+            background-size: 300px auto; /* 로고 크기 (원하는 크기로 조절 가능) */
+            background-repeat: no-repeat;
+            background-position: center;
+            filter: brightness(0) invert(1); /* 파란색 로고를 흰색으로 변경 */
+            opacity: 0.1; /* 투명도 50% */
+            pointer-events: none;
+            z-index: 0;
+        }
+        #viewport:active { cursor: grabbing; }
+        
+        #canvas {
+            position: absolute;
+            top: 0; left: 0;
+            transform-origin: 0 0;
+            padding: 50px;
+            display: inline-block;
+            min-width: 100%;
+            min-height: 100%;
+        }
+
+        #lines-svg {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 1;
+            overflow: visible;
+        }
+
+        .node-wrapper {
+            display: flex;
+            align-items: center;
+            position: relative;
+            margin: 10px 0;
+        }
+        .children-container {
+            display: flex;
+            flex-direction: column;
+            margin-left: 90px; 
+        }
+        
+        .node-box {
+            position: relative;
+            width: 90px;
+            background: #2d2d2d;
+            border: 2px solid #555;
+            border-radius: 6px;
+            padding: 6px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .node-box:hover {
+            transform: scale(1.05);
+            border-color: #ffffff;
+            z-index: 5;
+        }
+        .node-box.expanded {
+            border-color: #2ecc71;
+            box-shadow: 0 0 10px rgba(46, 204, 113, 0.4);
+        }
+        
+        .node-box.p1-win { border-color: #f14c4c; background-color: #3a2222; }
+        .node-box.p2-win { border-color: #3498db; background-color: #1f3a52; }
+        .node-box.draw   { border-color: #f1c40f; background-color: #3a3622; }
+
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 18px);
+            grid-template-rows: repeat(3, 18px);
+            gap: 2px;
+            background: #444;
+            padding: 2px;
+            border-radius: 3px;
+            margin-bottom: 4px;
+        }
+        .cell {
+            background: #1e1e1e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+            border-radius: 1px;
+        }
+        .cell.p1 { color: #f14c4c; }
+        .cell.p2 { color: #3498db; }
+        
+        .node-info {
+            font-size: 10px;
+            color: #ccc;
+            margin-bottom: 4px;
+        }
+
+        .stats-bar-container {
+            width: 100%;
+            height: 14px;
+            background: #111;
+            border-radius: 3px;
+            display: flex;
+            overflow: hidden;
+            margin-top: 2px;
+        }
+        .stat-segment {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            color: #fff;
+            font-weight: bold;
+            overflow: visible;
+            white-space: nowrap;
+            text-shadow: 0px 0px 2px rgba(0,0,0,0.8);
+            position: relative;
+            z-index: 10;
+        }
+        .stat-p1 { background: #f14c4c; }
+        .stat-draw { background: #f1c40f; color: #000; text-shadow: none; }
+        .stat-p2 { background: #3498db; }
+
+        .has-children::after {
+            content: '▶';
+            position: absolute;
+            right: -15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #888;
+            font-size: 10px;
+        }
+        .expanded.has-children::after { display: none; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Tic-Tac-Toe Full Tree (ES000001934 Dohyeon Jeong)</h1>
+        <div>
+            <button onclick="resetZoom()">Center View</button>
+            <button onclick="initTree()" style="background-color: #c0392b;">Collapse All</button>
+        </div>
+    </header>
+
+    <div id="viewport" onmousedown="startPan(event)" onmousemove="doPan(event)" onmouseup="endPan()" onwheel="zoom(event)">
+        <div id="canvas">
+            <svg id="lines-svg"></svg>
+            <div id="tree-root"></div>
+        </div>
+    </div>
+
+<script>
+let statsCache = {};
+
+function getCanonicalForm(board) {
+    let syms = [];
+    for (let rot = 0; rot < 4; rot++) {
+        let g = [...board];
+        for (let r = 0; r < rot; r++) {
+            g = [g[6], g[3], g[0], g[7], g[4], g[1], g[8], g[5], g[2]];
+        }
+        for (let flip of [false, true]) {
+            let fg = [...g];
+            if (flip) fg = [fg[2], fg[1], fg[0], fg[5], fg[4], fg[3], fg[8], fg[7], fg[6]];
+            syms.push(fg.join(''));
+        }
+    }
+    syms.sort();
+    return syms[0];
+}
+
+function checkWinner(board) {
+    const lines = [
+        [0,1,2], [3,4,5], [6,7,8], 
+        [0,3,6], [1,4,7], [2,5,8], 
+        [0,4,8], [2,4,6]
+    ];
+    for (let [a,b,c] of lines) {
+        if (board[a] !== 0 && board[a] === board[b] && board[a] === board[c]) return board[a]; 
+    }
+    if (!board.includes(0)) return 3; 
+    return 0; 
+}
+
+function filterUniqueVisually(boardsArray) {
+    let seen = new Set();
+    let result = [];
+    for (let b of boardsArray) {
+        let canon = getCanonicalForm(b);
+        if (!seen.has(canon)) {
+            seen.add(canon);
+            result.push(b.join(''));
+        }
+    }
+    return result;
+}
+
+function getAllNextStates(boardStr, player) {
+    let board = boardStr.split('').map(Number);
+    let allMoves = [];
+    for(let i=0; i<9; i++) {
+        if(board[i] === 0) {
+            let temp = [...board];
+            temp[i] = player;
+            allMoves.push(temp);
+        }
+    }
+    return filterUniqueVisually(allMoves);
+}
+
+function getSmartNextStates(boardStr, player) {
+    let board = boardStr.split('').map(Number);
+    let emptyIndices = [];
+    for(let i=0; i<9; i++) if(board[i]===0) emptyIndices.push(i);
+
+    let winningMoves = [];
+    for(let i of emptyIndices) {
+        let temp = [...board];
+        temp[i] = player;
+        if (checkWinner(temp) === player) winningMoves.push(temp);
+    }
+    if (winningMoves.length > 0) return filterUniqueVisually(winningMoves);
+
+    let opponent = player === 1 ? 2 : 1;
+    let blockingMoves = [];
+    for(let i of emptyIndices) {
+        let temp = [...board];
+        temp[i] = opponent;
+        if (checkWinner(temp) === opponent) {
+            let blockTemp = [...board];
+            blockTemp[i] = player;
+            blockingMoves.push(blockTemp);
+        }
+    }
+    if (blockingMoves.length > 0) return filterUniqueVisually(blockingMoves);
+
+    let allMoves = [];
+    for(let i of emptyIndices) {
+        let temp = [...board];
+        temp[i] = player;
+        allMoves.push(temp);
+    }
+    return filterUniqueVisually(allMoves);
+}
+
+// [핵심 변경 1] Minimax (score) 완벽 플레이 점수 계산 추가
+function calculateStats(canonBoardStr) {
+    if (statsCache[canonBoardStr]) return statsCache[canonBoardStr];
+
+    let board = canonBoardStr.split('').map(Number);
+    let winner = checkWinner(board);
+
+    // score: 1(X 강제승리), -1(O 강제승리), 0(쌍방 최선시 무승부)
+    if (winner === 1) return { p1: 1, p2: 0, draw: 0, total: 1, score: 1 };
+    if (winner === 2) return { p1: 0, p2: 1, draw: 0, total: 1, score: -1 };
+    if (winner === 3) return { p1: 0, p2: 0, draw: 1, total: 1, score: 0 };
+
+    let emptyCount = board.filter(x => x === 0).length;
+    let player = (emptyCount % 2 === 1) ? 1 : 2;
+
+    let stats = { p1: 0, p2: 0, draw: 0, total: 0, score: player === 1 ? -Infinity : Infinity };
+    let nextStates = getSmartNextStates(canonBoardStr, player);
+
+    nextStates.forEach(childStr => {
+        let childCanon = getCanonicalForm(childStr.split('').map(Number));
+        let childStats = calculateStats(childCanon);
+        
+        stats.p1 += childStats.p1;
+        stats.p2 += childStats.p2;
+        stats.draw += childStats.draw;
+        stats.total += childStats.total;
+
+        // 미니맥스 점수 업데이트 (X는 최대화, O는 최소화)
+        if (player === 1) {
+            stats.score = Math.max(stats.score, childStats.score);
+        } else {
+            stats.score = Math.min(stats.score, childStats.score);
+        }
+    });
+
+    statsCache[canonBoardStr] = stats;
+    return stats;
+}
+
+function formatPercent(pct) {
+    if (pct === 0) return '';
+    if (pct > 0 && pct < 1) return '<1%';
+    if (pct > 99 && pct < 100) return '>99%';
+    return parseFloat(pct.toFixed(1)) + '%';
+}
+
+function createNodeElement(boardStr, turn) {
+    let board = boardStr.split('').map(Number);
+    let winner = checkWinner(board);
+    let isTerminal = winner !== 0;
+    
+    let canonBoardStr = getCanonicalForm(board);
+    let stats = calculateStats(canonBoardStr);
+    
+    let p1Pct = stats.total > 0 ? (stats.p1 / stats.total * 100) : 0;
+    let p2Pct = stats.total > 0 ? (stats.p2 / stats.total * 100) : 0;
+    let drawPct = stats.total > 0 ? (stats.draw / stats.total * 100) : 0;
+    
+    let wrapper = document.createElement('div');
+    wrapper.className = 'node-wrapper';
+
+    let box = document.createElement('div');
+    box.className = 'node-box';
+    box.setAttribute('data-board', boardStr);
+    
+    if(winner === 1) box.classList.add('p1-win');
+    else if(winner === 2) box.classList.add('p2-win');
+    else if(winner === 3) box.classList.add('draw');
+    if(!isTerminal) box.classList.add('has-children');
+    
+    let grid = document.createElement('div');
+    grid.className = 'board-grid';
+    for (let i = 0; i < 9; i++) {
+        let cell = document.createElement('div');
+        let val = board[i];
+        cell.className = 'cell ' + (val === 1 ? 'p1' : (val === 2 ? 'p2' : ''));
+        cell.innerText = val === 1 ? 'X' : (val === 2 ? 'O' : '');
+        grid.appendChild(cell);
+    }
+    box.appendChild(grid);
+    
+    let info = document.createElement('div');
+    info.className = 'node-info';
+    info.innerText = winner === 1 ? 'X Win' : (winner === 2 ? 'O Win' : (winner === 3 ? 'Draw' : `Turn ${turn}`));
+    box.appendChild(info);
+    
+    let barContainer = document.createElement('div');
+    barContainer.className = 'stats-bar-container';
+    
+    if (p1Pct > 0) {
+        let p1Bar = document.createElement('div');
+        p1Bar.className = 'stat-segment stat-p1';
+        p1Bar.style.width = `${p1Pct}%`;
+        p1Bar.innerText = formatPercent(p1Pct);
+        barContainer.appendChild(p1Bar);
+    }
+    if (drawPct > 0) {
+        let drawBar = document.createElement('div');
+        drawBar.className = 'stat-segment stat-draw';
+        drawBar.style.width = `${drawPct}%`;
+        drawBar.innerText = formatPercent(drawPct);
+        barContainer.appendChild(drawBar);
+    }
+    if (p2Pct > 0) {
+        let p2Bar = document.createElement('div');
+        p2Bar.className = 'stat-segment stat-p2';
+        p2Bar.style.width = `${p2Pct}%`;
+        p2Bar.innerText = formatPercent(p2Pct);
+        barContainer.appendChild(p2Bar);
+    }
+    box.appendChild(barContainer);
+    wrapper.appendChild(box);
+
+    let childrenContainer = document.createElement('div');
+    childrenContainer.className = 'children-container';
+    childrenContainer.style.display = 'none';
+    wrapper.appendChild(childrenContainer);
+
+    if (!isTerminal) {
+        box.onclick = (e) => {
+            e.stopPropagation();
+            if (childrenContainer.style.display === 'none') {
+                if (childrenContainer.children.length === 0) {
+                    let emptyCount = board.filter(x => x === 0).length;
+                    let player = (emptyCount % 2 === 1) ? 1 : 2;
+                    let allStates = getAllNextStates(boardStr, player);
+                    allStates.forEach(childStr => {
+                        childrenContainer.appendChild(createNodeElement(childStr, turn + 1));
+                    });
+                }
+                childrenContainer.style.display = 'flex';
+                box.classList.add('expanded');
+                
+                requestAnimationFrame(() => {
+                    drawLines();
+                    centerNode(box);
+                });
+            } else {
+                childrenContainer.style.display = 'none';
+                box.classList.remove('expanded');
+                requestAnimationFrame(drawLines);
+            }
+        };
+    }
+
+    return wrapper;
+}
+
+// [핵심 변경 2] 함정 피하기: 확률(Pct)이 아닌 미니맥스(score) 기반 최선수 추적
+function drawLines() {
+    let svg = document.getElementById('lines-svg');
+    svg.innerHTML = '';
+    
+    let canvas = document.getElementById('canvas');
+    let canvasRect = canvas.getBoundingClientRect();
+    let scaleMultiplier = 1 / scale; 
+    
+    svg.setAttribute('width', canvas.scrollWidth);
+    svg.setAttribute('height', canvas.scrollHeight);
+
+    let expandedBoxes = document.querySelectorAll('.node-box.expanded');
+    
+    expandedBoxes.forEach(pBox => {
+        let wrapper = pBox.parentElement;
+        let childrenContainer = wrapper.querySelector('.children-container');
+        if (!childrenContainer || childrenContainer.style.display === 'none') return;
+        
+        let cBoxes = childrenContainer.querySelectorAll(':scope > .node-wrapper > .node-box');
+        
+        let pRect = pBox.getBoundingClientRect();
+        let pX = (pRect.right - canvasRect.left) * scaleMultiplier;
+        let pY = (pRect.top + pRect.height/2 - canvasRect.top) * scaleMultiplier;
+        
+        let childData = [];
+        
+        cBoxes.forEach(cBox => {
+            let childBoard = cBox.getAttribute('data-board');
+            let canon = getCanonicalForm(childBoard.split('').map(Number));
+            let stats = calculateStats(canon);
+            
+            let p1Pct = stats.total > 0 ? (stats.p1 / stats.total) : 0;
+            let p2Pct = stats.total > 0 ? (stats.p2 / stats.total) : 0;
+            let drawPct = stats.total > 0 ? (stats.draw / stats.total) : 0;
+            
+            // 미니맥스 완벽 방어 점수(score)도 함께 저장
+            childData.push({ box: cBox, p1Pct, p2Pct, drawPct, score: stats.score, isBestP1: false, isBestP2: false });
+        });
+
+        // 1. 선공(X)의 최선: 강제 승리 가능성이 가장 높은 곳 (score 최대화)
+        let maxScoreX = Math.max(...childData.map(d => d.score));
+        let xCandidates = childData.filter(d => d.score === maxScoreX);
+        
+        // 동점일 경우, 함정(실수 유도율)이 가장 높은 곳 선택
+        let bestX_p1Pct = Math.max(...xCandidates.map(d => d.p1Pct));
+        xCandidates.forEach(d => {
+            if (d.p1Pct === bestX_p1Pct) d.isBestP1 = true;
+        });
+
+        // 2. 후공(O)의 최선: 상대의 강제 승리가 절대 없는 곳 (score 최소화, 1순위)
+        let minScoreO = Math.min(...childData.map(d => d.score));
+        let oCandidates = childData.filter(d => d.score === minScoreO);
+        
+        // 동점(안전망 확보)일 경우, 나의 역전 승리 가능성이 가장 높은 곳 선택 (2순위)
+        let bestO_safeScore = Math.max(...oCandidates.map(d => d.p2Pct + d.drawPct));
+        let finalOCandidates = oCandidates.filter(d => (d.p2Pct + d.drawPct) === bestO_safeScore);
+        
+        let bestO_p2Pct = Math.max(...finalOCandidates.map(d => d.p2Pct));
+        finalOCandidates.forEach(d => {
+            if (d.p2Pct === bestO_p2Pct) d.isBestP2 = true;
+        });
+
+        // 3. 선 그리기
+        childData.forEach(data => {
+            let cBox = data.box;
+            let cRect = cBox.getBoundingClientRect();
+            let cX = (cRect.left - canvasRect.left) * scaleMultiplier;
+            let cY = (cRect.top + cRect.height/2 - canvasRect.top) * scaleMultiplier;
+            
+            let cx1 = pX + (cX - pX) / 2;
+            let cy1 = pY;
+            let cx2 = pX + (cX - pX) / 2;
+            let cy2 = cY;
+            
+            let strokeColor = '#555';
+            let strokeWidth = '1.5';
+            
+            let isBestP1 = data.isBestP1;
+            let isBestP2 = data.isBestP2;
+            
+            if (isBestP1 && isBestP2) {
+                strokeColor = '#9b59b6'; // Tie (Purple)
+                strokeWidth = '3';
+            } else if (isBestP1) {
+                strokeColor = '#f14c4c'; // Red
+                strokeWidth = '3';
+            } else if (isBestP2) {
+                strokeColor = '#3498db'; // Blue
+                strokeWidth = '3';
+            }
+            
+            let path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', `M ${pX} ${pY} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${cX} ${cY}`);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', strokeColor);
+            path.setAttribute('stroke-width', strokeWidth);
+            
+            if(strokeWidth === '3') {
+                svg.appendChild(path); 
+            } else {
+                svg.insertBefore(path, svg.firstChild);
+            }
+        });
+    });
+}
+
+let animationFrameId = null;
+
+function smoothPanTo(targetX, targetY, duration = 350) {
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    
+    let startPanX = panX;
+    let startPanY = panY;
+    let startTime = performance.now();
+
+    function animate(currentTime) {
+        let elapsed = currentTime - startTime;
+        let progress = Math.min(elapsed / duration, 1);
+        let ease = 1 - Math.pow(1 - progress, 3); 
+
+        panX = startPanX + (targetX - startPanX) * ease;
+        panY = startPanY + (targetY - startPanY) * ease;
+        updateTransformOnly();
+
+        if (progress < 1) {
+            animationFrameId = requestAnimationFrame(animate);
+        } else {
+            requestAnimationFrame(drawLines);
+        }
+    }
+    animationFrameId = requestAnimationFrame(animate);
+}
+
+function centerNode(nodeElement) {
+    let rect = nodeElement.getBoundingClientRect();
+    let vcx = window.innerWidth / 2;
+    let vcy = window.innerHeight / 2;
+    let ncx = rect.left + rect.width / 2;
+    let ncy = rect.top + rect.height / 2;
+    
+    let targetPanX = panX + (vcx - ncx);
+    let targetPanY = panY + (vcy - ncy);
+    
+    smoothPanTo(targetPanX, targetPanY);
+}
+
+let scale = 1;
+let panX = 150;
+let panY = 0; 
+let isPanning = false;
+let startX, startY;
+
+function updateTransformOnly() {
+    let canvas = document.getElementById('canvas');
+    canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+}
+
+function updateTransform() {
+    updateTransformOnly();
+    drawLines();
+}
+
+function startPan(e) {
+    if (e.target.closest('.node-box')) return;
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    isPanning = true;
+    startX = e.clientX - panX;
+    startY = e.clientY - panY;
+}
+function doPan(e) {
+    if (!isPanning) return;
+    panX = e.clientX - startX;
+    panY = e.clientY - startY;
+    updateTransformOnly();
+}
+function endPan() { 
+    if(isPanning) {
+        isPanning = false; 
+        requestAnimationFrame(drawLines);
+    }
+}
+
+function zoom(e) {
+    e.preventDefault();
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    
+    let zoomFactor = 1.1;
+    let oldScale = scale;
+    if (e.deltaY < 0) scale *= zoomFactor;
+    else scale /= zoomFactor;
+    scale = Math.max(0.1, Math.min(3.0, scale));
+    
+    let viewport = document.getElementById('viewport');
+    let rect = viewport.getBoundingClientRect();
+    let mouseX = e.clientX - rect.left;
+    let mouseY = e.clientY - rect.top;
+    
+    panX = mouseX - (mouseX - panX) * (scale / oldScale);
+    panY = mouseY - (mouseY - panY) * (scale / oldScale);
+    updateTransformOnly();
+    
+    clearTimeout(window.zoomTimeout);
+    window.zoomTimeout = setTimeout(drawLines, 50);
+}
+
+function resetZoom() {
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    scale = 1;
+    
+    let rootBox = document.querySelector('#tree-root .node-box');
+    if (rootBox) {
+        updateTransformOnly();
+        setTimeout(() => centerNode(rootBox), 10);
+    } else {
+        panX = window.innerWidth / 2 - 50;
+        panY = window.innerHeight / 2 - 50;
+        updateTransform();
+    }
+}
+
+function initTree() {
+    let svg = document.getElementById('lines-svg');
+    if(svg) svg.innerHTML = '';
+    
+    let rootStr = "000000000";
+    calculateStats(rootStr); 
+    
+    let rootWrapper = createNodeElement(rootStr, 0);
+    let treeRoot = document.getElementById('tree-root');
+    treeRoot.innerHTML = '';
+    treeRoot.appendChild(rootWrapper);
+    
+    resetZoom();
+    requestAnimationFrame(drawLines); 
+}
+
+window.onload = initTree;
+window.onresize = drawLines;
+</script>
+
+</body>
+</html>

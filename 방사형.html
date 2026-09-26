@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>틱택토 원형(방사형) 노드 그래프</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            margin: 0;
+            padding: 10px;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        header {
+            background: #252526;
+            padding: 10px 20px;
+            border-radius: 6px;
+            border: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            z-index: 10;
+        }
+        h1 {
+            font-size: 18px;
+            margin: 0;
+            color: #4ec9b0;
+        }
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 13px;
+        }
+        .controls label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+        button {
+            background-color: #0e639c;
+            color: white;
+            border: none;
+            padding: 6px 14px;
+            font-size: 14px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #1177bb;
+        }
+        #graph-viewport {
+            position: relative;
+            flex-grow: 1;
+            background: #181818;
+            border: 1px solid #3f3f46;
+            border-radius: 6px;
+            margin-top: 10px;
+            overflow: hidden;
+            cursor: grab;
+        }
+        #graph-viewport:active {
+            cursor: grabbing;
+        }
+        #graph-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: 0 0;
+        }
+        #connections-svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .node-box {
+            position: absolute;
+            width: 85px;
+            background: #2d2d2d;
+            border: 2px solid #555;
+            border-radius: 6px;
+            padding: 4px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transform: translate(-50%, -50%); /* 중심 기준으로 배치 */
+        }
+        .node-box:hover { filter: brightness(1.2); }
+        
+        .node-box.p1-win { border-color: #f14c4c; background-color: #3a2222; } /* X 승리 (빨강) */
+        .node-box.p2-win { border-color: #3498db; background-color: #1f3a52; } /* O 승리 (파랑) */
+        .node-box.draw   { border-color: #f1c40f; background-color: #3a3622; } /* 무승부 (노랑) */
+        .node-box.playing{ border-color: #555;    background-color: #2d2d2d; }
+        
+        .node-box.highlight {
+            border-color: #2ecc71 !important;
+            background-color: #1e3d2f !important;
+            box-shadow: 0 0 12px rgba(46, 204, 113, 0.7);
+            z-index: 10;
+        }
+
+        .board-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 18px);
+            grid-template-rows: repeat(3, 18px);
+            gap: 1px;
+            background: #444;
+            padding: 2px;
+            border-radius: 3px;
+            margin-bottom: 2px;
+        }
+        .cell {
+            background: #1e1e1e;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: bold;
+            border-radius: 1px;
+        }
+        .cell.p1 { color: #f14c4c; }
+        .cell.p2 { color: #3498db; }
+        .node-info {
+            font-size: 8px;
+            color: #ccc;
+            text-align: center;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #4ec9b0;
+            font-size: 18px;
+            font-weight: bold;
+            background: rgba(0,0,0,0.8);
+            padding: 15px 30px;
+            border-radius: 8px;
+            z-index: 100;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>틱택토 원형(방사형) 노드 그래프</h1>
+        <div class="controls">
+            <label>원 간격: <input type="range" id="ring-gap" min="100" max="250" value="160" oninput="renderGraph()"></label>
+            <button onclick="resetZoom()">화면 초기화</button>
+            <button onclick="initGraph()">다시 그리기</button>
+        </div>
+    </header>
+
+    <div id="graph-viewport" onmousedown="startPan(event)" onmousemove="doPan(event)" onmouseup="endPan()" onwheel="zoom(event)">
+        <div id="graph-canvas">
+            <svg id="connections-svg"></svg>
+        </div>
+        <div id="loading">원형 레이아웃 계산 중...</div>
+    </div>
+
+<script>
+let levelsData = {};
+let parentMap = {};
+let childrenMap = {};
+let nodePositions = {};
+
+let scale = 0.45;
+let panX = 0;
+let panY = 0;
+let isPanning = false;
+let startX, startY;
+
+function getCanonicalForm(board) {
+    let syms = [];
+    for (let rot = 0; rot < 4; rot++) {
+        let g = [...board];
+        for (let r = 0; r < rot; r++) {
+            g = [g[6], g[3], g[0], g[7], g[4], g[1], g[8], g[5], g[2]];
+        }
+        for (let flip of [false, true]) {
+            let fg = [...g];
+            if (flip) {
+                fg = [fg[2], fg[1], fg[0], fg[5], fg[4], fg[3], fg[8], fg[7], fg[6]];
+            }
+            syms.push(fg.join(''));
+        }
+    }
+    syms.sort();
+    return syms[0];
+}
+
+function checkWinner(board) {
+    const lines = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8], 
+        [0, 3, 6], [1, 4, 7], [2, 5, 8], 
+        [0, 4, 8], [2, 4, 6]            
+    ];
+    for (let [a, b, c] of lines) {
+        if (board[a] !== 0 && board[a] === board[b] && board[a] === board[c]) {
+            return board[a]; 
+        }
+    }
+    if (!board.includes(0)) return 3; 
+    return 0; 
+}
+
+function buildTree() {
+    let initialBoard = [0,0,0,0,0,0,0,0,0];
+    let rootKey = getCanonicalForm(initialBoard);
+    
+    levelsData = { 0: [rootKey] };
+    parentMap = {};
+    childrenMap = {};
+    
+    let visited = new Set([rootKey]);
+    let queue = [{board: initialBoard, key: rootKey, turn: 0}];
+    
+    while(queue.length > 0) {
+        let current = queue.shift();
+        let board = current.key.split('').map(Number);
+        
+        if (checkWinner(board) !== 0) continue;
+        
+        let emptyCount = board.filter(x => x === 0).length;
+        let player = (emptyCount % 2 === 1) ? 1 : 2;
+        let nextTurn = current.turn + 1;
+        
+        if (!levelsData[nextTurn]) levelsData[nextTurn] = [];
+        
+        for (let i = 0; i < 9; i++) {
+            if (board[i] === 0) {
+                let newBoard = [...board];
+                newBoard[i] = player;
+                let childKey = getCanonicalForm(newBoard);
+                
+                if (!levelsData[nextTurn].includes(childKey)) {
+                    levelsData[nextTurn].push(childKey);
+                }
+                
+                if (!parentMap[childKey]) parentMap[childKey] = new Set();
+                parentMap[childKey].add(current.key);
+                
+                if (!childrenMap[current.key]) childrenMap[current.key] = new Set();
+                childrenMap[current.key].add(childKey);
+                
+                if (!visited.has(childKey)) {
+                    visited.add(childKey);
+                    queue.push({board: newBoard, key: childKey, turn: nextTurn});
+                }
+            }
+        }
+    }
+}
+
+// 원형(방사형) 좌표 계산 레이아웃
+function computeCircularLayout() {
+    nodePositions = {};
+    let ringGap = parseInt(document.getElementById('ring-gap').value);
+    
+    // 중앙 0수
+    nodePositions[levelsData[0][0]] = { x: 0, y: 0, width: 85, height: 75 };
+    
+    // 1수 ~ 9수 동심원 배치
+    for (let turn = 1; turn <= 9; turn++) {
+        if (!levelsData[turn] || levelsData[turn].length === 0) continue;
+        
+        let states = levelsData[turn];
+        let count = states.length;
+        let radius = turn * ringGap;
+        
+        states.forEach((stateStr, idx) => {
+            let angle = (idx / count) * 2 * Math.PI; // 원 주위를 균등하게 나눔
+            let x = radius * Math.cos(angle);
+            let y = radius * Math.sin(angle);
+            nodePositions[stateStr] = { x: x, y: y, width: 85, height: 75 };
+        });
+    }
+}
+
+function highlightNode(key) {
+    document.querySelectorAll('.node-box').forEach(el => el.classList.remove('highlight'));
+    document.querySelectorAll('.wire').forEach(line => {
+        line.setAttribute('stroke', '#333');
+        line.setAttribute('stroke-width', '1.5');
+    });
+    
+    let activeNodes = new Set();
+    
+    let pQueue = [key];
+    while(pQueue.length > 0) {
+        let cur = pQueue.shift();
+        if (activeNodes.has(cur)) continue;
+        activeNodes.add(cur);
+        if (parentMap[cur]) {
+            parentMap[cur].forEach(p => pQueue.push(p));
+        }
+    }
+    
+    let cQueue = [key];
+    while(cQueue.length > 0) {
+        let cur = cQueue.shift();
+        activeNodes.add(cur);
+        if (childrenMap[cur]) {
+            childrenMap[cur].forEach(c => cQueue.push(c));
+        }
+    }
+    
+    activeNodes.forEach(nKey => {
+        let el = document.getElementById(`node-${nKey}`);
+        if (el) el.classList.add('highlight');
+    });
+    
+    document.querySelectorAll('.wire').forEach(line => {
+        let p = line.getAttribute('data-parent');
+        let c = line.getAttribute('data-child');
+        if (activeNodes.has(p) && activeNodes.has(c)) {
+            line.setAttribute('stroke', '#2ecc71');
+            line.setAttribute('stroke-width', '2.5');
+        }
+    });
+}
+
+function renderGraph() {
+    let canvas = document.getElementById('graph-canvas');
+    let svg = document.getElementById('connections-svg');
+    
+    Array.from(canvas.children).forEach(child => {
+        if (child !== svg) canvas.removeChild(child);
+    });
+    svg.innerHTML = '';
+    
+    computeCircularLayout();
+    
+    // 캔버스 크기 및 오프셋 설정 (중앙이 0,0 이므로 여유 공간 부여)
+    let canvasSize = 4000;
+    let centerOffset = canvasSize / 2;
+    canvas.style.width = `${canvasSize}px`;
+    canvas.style.height = `${canvasSize}px`;
+    svg.setAttribute('width', `${canvasSize}px`);
+    svg.setAttribute('height', `${canvasSize}px`);
+    
+    // 노드 DOM 생성
+    for (let turn in levelsData) {
+        levelsData[turn].forEach(stateStr => {
+            let pos = nodePositions[stateStr];
+            if (!pos) return;
+            
+            // 캔버스 중앙 기준 좌표 변환
+            let renderX = pos.x + centerOffset;
+            let renderY = pos.y + centerOffset;
+            pos.renderX = renderX;
+            pos.renderY = renderY;
+            
+            let board = stateStr.split('').map(Number);
+            let winner = checkWinner(board);
+            
+            let classTheme = 'playing';
+            let statusText = '진행';
+            if (winner === 1) { classTheme = 'p1-win'; statusText = 'X 승'; }
+            else if (winner === 2) { classTheme = 'p2-win'; statusText = 'O 승'; }
+            else if (winner === 3) { classTheme = 'draw'; statusText = '무승부'; }
+            
+            let box = document.createElement('div');
+            box.className = `node-box ${classTheme}`;
+            box.id = `node-${stateStr}`;
+            box.style.left = `${renderX}px`;
+            box.style.top = `${renderY}px`;
+            
+            let grid = document.createElement('div');
+            grid.className = 'board-grid';
+            for (let i = 0; i < 9; i++) {
+                let cell = document.createElement('div');
+                let val = board[i];
+                cell.className = 'cell ' + (val === 1 ? 'p1' : (val === 2 ? 'p2' : ''));
+                cell.innerText = val === 1 ? 'X' : (val === 2 ? 'O' : '');
+                grid.appendChild(cell);
+            }
+            box.appendChild(grid);
+            
+            let info = document.createElement('div');
+            info.className = 'node-info';
+            info.innerText = statusText;
+            box.appendChild(info);
+            
+            box.onclick = (e) => {
+                e.stopPropagation();
+                highlightNode(stateStr);
+            };
+            canvas.appendChild(box);
+        });
+    }
+    
+    // 와이어(SVG 곡선) 그리기
+    for (let parentKey in childrenMap) {
+        let pPos = nodePositions[parentKey];
+        if (!pPos) continue;
+        
+        childrenMap[parentKey].forEach(childKey => {
+            let cPos = nodePositions[childKey];
+            if (!cPos) return;
+            
+            let x1 = pPos.renderX;
+            let y1 = pPos.renderY;
+            let x2 = cPos.renderX;
+            let y2 = cPos.renderY;
+            
+            // 방사형 곡선 제어점 (중심을 향해 살짝 휘어지게)
+            let cx1 = x1 + (x2 - x1) * 0.5;
+            let cy1 = y1 + (y2 - y1) * 0.1;
+            let cx2 = x1 + (x2 - x1) * 0.5;
+            let cy2 = y2 - (y2 - y1) * 0.1;
+            
+            let path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`);
+            path.setAttribute('fill', 'none');
+            path.setAttribute('stroke', '#333');
+            path.setAttribute('stroke-width', '1.2');
+            path.setAttribute('class', 'wire');
+            path.setAttribute('data-parent', parentKey);
+            path.setAttribute('data-child', childKey);
+            
+            svg.appendChild(path);
+        });
+    }
+    
+    updateTransform();
+}
+
+function updateTransform() {
+    let canvas = document.getElementById('graph-canvas');
+    canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+}
+
+function startPan(e) {
+    if (e.target.closest('.node-box')) return;
+    isPanning = true;
+    startX = e.clientX - panX;
+    startY = e.clientY - panY;
+}
+function doPan(e) {
+    if (!isPanning) return;
+    panX = e.clientX - startX;
+    panY = e.clientY - startY;
+    updateTransform();
+}
+function endPan() { isPanning = false; }
+
+function zoom(e) {
+    e.preventDefault();
+    let zoomFactor = 1.1;
+    let oldScale = scale;
+    if (e.deltaY < 0) scale *= zoomFactor;
+    else scale /= zoomFactor;
+    scale = Math.max(0.1, Math.min(3.0, scale));
+    
+    let viewport = document.getElementById('graph-viewport');
+    let rect = viewport.getBoundingClientRect();
+    let mouseX = e.clientX - rect.left;
+    let mouseY = e.clientY - rect.top;
+    
+    panX = mouseX - (mouseX - panX) * (scale / oldScale);
+    panY = mouseY - (mouseY - panY) * (scale / oldScale);
+    updateTransform();
+}
+
+function resetZoom() {
+    scale = 0.45;
+    panX = window.innerWidth / 2;
+    panY = window.innerHeight / 2;
+    updateTransform();
+}
+
+function initGraph() {
+    let loading = document.getElementById('loading');
+    loading.style.display = 'block';
+    setTimeout(() => {
+        buildTree();
+        resetZoom();
+        renderGraph();
+        loading.style.display = 'none';
+    }, 50);
+}
+
+window.onload = () => {
+    initGraph();
+};
+</script>
+
+</body>
+</html>
