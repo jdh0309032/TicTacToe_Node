@@ -50,6 +50,10 @@
             background: #181818;
             cursor: grab;
             overflow: hidden;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-touch-callout: none;
         }
         #viewport::before {
             content: "";
@@ -688,6 +692,87 @@ function initTree() {
     resetZoom();
     requestAnimationFrame(drawLines); 
 }
+
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+function handleTouchStart(event) {
+    if (event.target.closest('.node-box')) return;
+
+    if (event.touches.length === 2) {
+        const [touchA, touchB] = [event.touches[0], event.touches[1]];
+        pinchState = {
+            distance: Math.hypot(touchA.clientX - touchB.clientX, touchA.clientY - touchB.clientY),
+            scale: scale,
+            panX: panX,
+            panY: panY,
+            centerX: (touchA.clientX + touchB.clientX) / 2,
+            centerY: (touchA.clientY + touchB.clientY) / 2
+        };
+        isPanning = false;
+        return;
+    }
+
+    if (event.touches.length === 1) {
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        const touch = event.touches[0];
+        isPanning = true;
+        startX = touch.clientX - panX;
+        startY = touch.clientY - panY;
+        event.preventDefault();
+    }
+}
+
+function handleTouchMove(event) {
+    if (event.touches.length === 2 && pinchState) {
+        event.preventDefault();
+        const [touchA, touchB] = [event.touches[0], event.touches[1]];
+        const distance = Math.hypot(touchA.clientX - touchB.clientX, touchA.clientY - touchB.clientY);
+        const nextScale = clamp((distance / pinchState.distance) * pinchState.scale, 0.1, 3.0);
+        const centerX = (touchA.clientX + touchB.clientX) / 2;
+        const centerY = (touchA.clientY + touchB.clientY) / 2;
+        const viewport = document.getElementById('viewport');
+        const rect = viewport.getBoundingClientRect();
+        const localX = centerX - rect.left;
+        const localY = centerY - rect.top;
+
+        const worldX = (localX - pinchState.panX) / pinchState.scale;
+        const worldY = (localY - pinchState.panY) / pinchState.scale;
+
+        scale = nextScale;
+        panX = localX - worldX * scale;
+        panY = localY - worldY * scale;
+        updateTransformOnly();
+        clearTimeout(window.zoomTimeout);
+        window.zoomTimeout = setTimeout(drawLines, 50);
+        return;
+    }
+
+    if (event.touches.length === 1 && isPanning) {
+        event.preventDefault();
+        const touch = event.touches[0];
+        panX = touch.clientX - startX;
+        panY = touch.clientY - startY;
+        updateTransformOnly();
+    }
+}
+
+function handleTouchEnd(event) {
+    if (event.touches.length === 0) {
+        isPanning = false;
+        pinchState = null;
+        requestAnimationFrame(drawLines);
+    }
+}
+
+let pinchState = null;
+
+const viewport = document.getElementById('viewport');
+viewport.addEventListener('touchstart', handleTouchStart, { passive: false });
+viewport.addEventListener('touchmove', handleTouchMove, { passive: false });
+viewport.addEventListener('touchend', handleTouchEnd, { passive: false });
+viewport.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
 window.onload = initTree;
 window.onresize = drawLines;
