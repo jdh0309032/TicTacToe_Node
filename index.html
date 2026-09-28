@@ -89,25 +89,11 @@
             overflow: visible;
         }
 
-        #tree-root {
-            position: relative;
-            width: 100%;
-            height: 100%;
-        }
-
         .node-wrapper {
             display: flex;
             align-items: center;
             position: relative;
             margin: 10px 0;
-        }
-        .node-wrapper.radial {
-            position: absolute;
-            left: 0;
-            top: 0;
-            margin: 0;
-            transform: translate(-50%, -50%);
-            z-index: 2;
         }
         .children-container {
             display: flex;
@@ -216,8 +202,6 @@
     <header>
         <h1>Tic-Tac-Toe Full Tree (ES000001934 Dohyeon Jeong)</h1>
         <div>
-            <button onclick="expandAll()">Expand All</button>
-            <button id="radial-toggle" onclick="toggleRadialView()">Radial View</button>
             <button onclick="resetZoom()">Center View</button>
             <button onclick="initTree()" style="background-color: #c0392b;">Collapse All</button>
         </div>
@@ -232,7 +216,6 @@
 
 <script>
 let statsCache = {};
-let radialView = false;
 
 function getCanonicalForm(board) {
     let syms = [];
@@ -371,112 +354,6 @@ function formatPercent(pct) {
     return parseFloat(pct.toFixed(1)) + '%';
 }
 
-function expandAll() {
-    const rootWrapper = document.querySelector('#tree-root > .node-wrapper');
-    if (!rootWrapper) return;
-
-    function visit(wrapper) {
-        const box = wrapper.querySelector('.node-box');
-        const container = wrapper.querySelector('.children-container');
-        if (!box || !container) return;
-
-        if (box.classList.contains('has-children') && container.style.display === 'none') {
-            if (container.children.length === 0) {
-                const board = box.getAttribute('data-board');
-                const emptyCount = board.split('').map(Number).filter(x => x === 0).length;
-                const player = (emptyCount % 2 === 1) ? 1 : 2;
-                const nextStates = getAllNextStates(board, player);
-                nextStates.forEach(childStr => {
-                    container.appendChild(createNodeElement(childStr, Number(box.getAttribute('data-turn')) + 1));
-                });
-            }
-            container.style.display = 'flex';
-            box.classList.add('expanded');
-        }
-
-        Array.from(container.children).forEach(child => visit(child));
-    }
-
-    visit(rootWrapper);
-    requestAnimationFrame(() => {
-        drawLines();
-        updateLayout();
-    });
-}
-
-function toggleRadialView() {
-    radialView = !radialView;
-    const toggleButton = document.getElementById('radial-toggle');
-    if (toggleButton) {
-        toggleButton.textContent = radialView ? 'Tree View' : 'Radial View';
-    }
-    updateLayout();
-    requestAnimationFrame(drawLines);
-}
-
-function updateLayout() {
-    const treeRoot = document.getElementById('tree-root');
-    if (!treeRoot) return;
-
-    const wrappers = Array.from(treeRoot.querySelectorAll('.node-wrapper'));
-    const rootWrapper = treeRoot.querySelector(':scope > .node-wrapper');
-    if (!rootWrapper) return;
-
-    if (!radialView) {
-        wrappers.forEach(wrapper => {
-            wrapper.classList.remove('radial');
-            wrapper.style.position = '';
-            wrapper.style.left = '';
-            wrapper.style.top = '';
-            wrapper.style.transform = '';
-            wrapper.style.margin = '';
-            const container = wrapper.querySelector('.children-container');
-            if (container) {
-                container.style.marginLeft = '';
-                container.style.display = container.style.display || 'none';
-            }
-        });
-        return;
-    }
-
-    const depthMap = {};
-    function collect(wrapper, depth) {
-        if (!depthMap[depth]) depthMap[depth] = [];
-        depthMap[depth].push(wrapper);
-
-        const container = wrapper.querySelector('.children-container');
-        if (container && container.style.display !== 'none') {
-            Array.from(container.children).forEach(child => collect(child, depth + 1));
-        }
-    }
-
-    collect(rootWrapper, 0);
-
-    Object.keys(depthMap).forEach(depthKey => {
-        const items = depthMap[depthKey];
-        const depth = Number(depthKey);
-        items.forEach((wrapper, index) => {
-            wrapper.classList.add('radial');
-            const total = items.length;
-            const angle = total === 1 ? -Math.PI / 2 : (-Math.PI / 2) + (index / total) * (Math.PI * 2);
-            const radius = 160 + depth * 150;
-            const x = Math.cos(angle) * radius;
-            const y = Math.sin(angle) * radius;
-            wrapper.style.position = 'absolute';
-            wrapper.style.left = `${x}px`;
-            wrapper.style.top = `${y}px`;
-            wrapper.style.transform = 'translate(-50%, -50%)';
-            wrapper.style.margin = '0';
-
-            const container = wrapper.querySelector('.children-container');
-            if (container) {
-                container.style.marginLeft = '0';
-                container.style.display = container.style.display || 'flex';
-            }
-        });
-    });
-}
-
 function createNodeElement(boardStr, turn) {
     let board = boardStr.split('').map(Number);
     let winner = checkWinner(board);
@@ -495,7 +372,6 @@ function createNodeElement(boardStr, turn) {
     let box = document.createElement('div');
     box.className = 'node-box';
     box.setAttribute('data-board', boardStr);
-    box.setAttribute('data-turn', String(turn));
     
     if(winner === 1) box.classList.add('p1-win');
     else if(winner === 2) box.classList.add('p2-win');
@@ -567,19 +443,12 @@ function createNodeElement(boardStr, turn) {
                 
                 requestAnimationFrame(() => {
                     drawLines();
-                    if (radialView) {
-                        updateLayout();
-                    } else {
-                        centerNode(box);
-                    }
+                    centerNode(box);
                 });
             } else {
                 childrenContainer.style.display = 'none';
                 box.classList.remove('expanded');
-                requestAnimationFrame(() => {
-                    drawLines();
-                    if (radialView) updateLayout();
-                });
+                requestAnimationFrame(drawLines);
             }
         };
     }
@@ -820,11 +689,7 @@ function initTree() {
     treeRoot.innerHTML = '';
     treeRoot.appendChild(rootWrapper);
     
-    radialView = false;
-    const toggleButton = document.getElementById('radial-toggle');
-    if (toggleButton) toggleButton.textContent = 'Radial View';
     resetZoom();
-    updateLayout();
     requestAnimationFrame(drawLines); 
 }
 
